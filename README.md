@@ -21,20 +21,26 @@ settings.yaml 里没写的模型用的是内置 catalog 或路由默认值。本
 
 - 数据源：models.dev CDN `api.json`（默认，provider 键控）/ 任意镜像 URL / GitHub
   官方仓库 `anomalyco/models.dev`（镜像备选，取签入的 `models.json`）。加载器自动识别两种格式。
-- 匹配顺序：精确 `index[provider][modelId]` → alias 映射 → 模型 id 归一化跨 provider
-  回退 + 聚合策略（mode 众数 / max / min / first，`preferredProviders` 优先）。
-- 未命中条目跳过并计入报告。
+- 解析优先级（settings 里的 provider + 模型 id）：
+  1. provider 与模型**精确匹配**（含供应方别名解析后）；
+  2. **取值优先的 provider**（按列表顺序取第一个持有该模型的）；
+  3. **聚合策略**（mode 众数 / max / min）按模型 id 跨 provider 聚合。
+- 未命中条目跳过并计入报告。只处理 `llm-pi-ai`（`llm-deepseek` 有官方硬编码兜底）。
 
 ## 设置面板（M3）
 
 新注册一个 `settings.section` 页面（id `models-sync`，不改动官方 Models 页），提供：
 
-- 数据源选择（api / 自定义 URL / GitHub repo@ref#file）、代理、匹配策略、首选 provider、
-  供应方别名、补全目标（llm-pi-ai / llm-deepseek）；
+- 数据源选择（models.dev / 自定义 URL / GitHub repo@ref#file）、代理地址（控制连接
+  models.dev 的代理）、聚合策略（mode/max/min，带说明）、取值优先的 provider（独立
+  优先级）、供应方别名；只处理 `llm-pi-ai`，无「补全目标」选项；
+- **查询 context 数据**：输入 provider（自动走别名）+ model id，按当前匹配配置返回该
+  模型的 contextWindow 与 maxTokens，并标注命中方式（精确/别名/取值优先/聚合）；
 - **立即同步**按钮（手动触发；先保存配置再执行，结果内联显示：写入/跳过/未命中/错误）；
 - **调试开关**：打开后记录同步调试日志（拉取耗时、命中路径、写回明细等）。日志只在
   面板内联显示，不写宿主/浏览器日志；**关闭时不记录任何日志**；
 - **日志大小限制**（MB）：`-1` 无限制增长；正数为上限，超限丢弃最早记录并标记截断；
+  输入校验只接受 `-1` 或正整数；
 - **导出为 JSON 文件**：把当前调试日志（含配置、上限、截断标记、记录）下载为 JSON。
 
 ## 目录结构

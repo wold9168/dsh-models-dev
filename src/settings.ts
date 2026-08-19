@@ -25,12 +25,8 @@ export const ModelsSyncSectionSchema: z<ModelsSyncSection> = z.object({
   matching: z.object({
     aliases: z.dict(z.string()).default({}),
     preferredProviders: z.array(z.string()).default([]),
-    policy: z.union(['mode', 'max', 'min', 'first']).default('mode'),
+    policy: z.union(['mode', 'max', 'min']).default('mode'),
   }).default({ aliases: {}, preferredProviders: [], policy: 'mode' }),
-  targets: z.object({
-    llmPiAi: z.boolean().default(true),
-    llmDeepseek: z.boolean().default(true),
-  }).default({ llmPiAi: true, llmDeepseek: true }),
   debug: z.boolean().default(false),
   maxLogMb: z.number().default(2),
 })

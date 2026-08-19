@@ -1,8 +1,8 @@
 /**
- * Host 侧同步编排：取数 -> 归一化 -> 计划 -> 写回 settings。
+ * Host 侧同步编排：取数 -> 归一化 -> 计划 -> 写回 settings（仅 llm-pi-ai）。
  *
  * 通过依赖注入的 SettingsAccess 使用 settings 服务，因此本模块不依赖 DSH
- * 包即可独立单测；真正的 `ctx.settings` 适配见 integration/dsh/host-plugin.ts。
+ * 包即可独立单测；真正的 `ctx.settings` 适配在运行时接线。
  * 传 options.onDebug 时在关键步骤发出调试记录（仅开关打开时收集）。
  */
 import type { DebugRecord, SyncConfig, SyncReport } from '../core/types.ts'
@@ -27,10 +27,15 @@ export interface SyncRunOptions {
   onDebug?: (record: DebugRecord) => void
 }
 
-const DEFAULT_TARGETS = { llmPiAi: true, llmDeepseek: true }
+const KIND_LABEL: Record<string, string> = {
+  exact: '精确',
+  alias: '别名',
+  preferred: '取值优先',
+  match: '聚合',
+}
 
 /**
- * 执行一次完整同步：拉取 -> 归一化 -> 计划 -> 对每个有变化的命名空间合并写回。
+ * 执行一次完整同步：拉取 -> 归一化 -> 计划 -> 合并写回 llm-pi-ai。
  * 网络或数据源错误记入报告 errors，不中断已解析的部分。
  */
 export async function syncViaSettings(
@@ -62,20 +67,15 @@ export async function syncViaSettings(
     emit?.({ ts: new Date().toISOString(), level: 'error', message: `拉取失败 ${url}: ${message}` })
   }
 
-  const targets = { ...DEFAULT_TARGETS, ...config.targets }
   const input: PlanInput = {
     llmPiAi: settings.user('llm-pi-ai') as PlanInput['llmPiAi'] | undefined,
-    llmDeepseek: settings.user('llm-deepseek') as PlanInput['llmDeepseek'] | undefined,
   }
   const matching = config.matching ?? {}
-  const planned = planSync(input, index, matching, targets)
+  const planned = planSync(input, index, matching)
 
   for (const write of planned.writes) {
-    const via = write.kind === 'exact'
-      ? '精确'
-      : write.kind === 'alias'
-        ? `alias(${write.matchedProvider ?? '?'})`
-        : `匹配(${write.matchedProvider ?? '?'})`
+    const label = KIND_LABEL[write.kind] ?? write.kind
+    const via = write.kind === 'exact' ? label : `${label}(${write.matchedProvider ?? '?'})`
     emit?.({
       ts: new Date().toISOString(),
       level: 'info',
@@ -96,17 +96,15 @@ export async function syncViaSettings(
     })
   }
 
-  for (const ns of ['llm-pi-ai', 'llm-deepseek'] as const) {
-    const patch = buildUpdatePatch(ns, input, planned.writes)
-    if (patch === undefined) continue
+  const patch = buildUpdatePatch(input, planned.writes)
+  if (patch !== undefined) {
     try {
-      await settings.update(ns, patch)
-      const count = planned.writes.filter(w => w.ns === ns).length
-      emit?.({ ts: new Date().toISOString(), level: 'info', message: `写回 ${ns}：${count} 条 contextWindow` })
+      await settings.update('llm-pi-ai', patch)
+      emit?.({ ts: new Date().toISOString(), level: 'info', message: `写回 llm-pi-ai：${planned.writes.length} 条 contextWindow` })
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      errors.push(`models-sync: 写回 ${ns} 失败：${message}`)
-      emit?.({ ts: new Date().toISOString(), level: 'error', message: `写回失败 ${ns}: ${message}` })
+      errors.push(`models-sync: 写回 llm-pi-ai 失败：${message}`)
+      emit?.({ ts: new Date().toISOString(), level: 'error', message: `写回失败 llm-pi-ai: ${message}` })
     }
   }
 

@@ -3,7 +3,7 @@
  * 描述符与宿主清单共用 MODELS_SYNC_INVOCATIONS，两边保持同一 wire 定义。
  */
 import type { RemoteResult, TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol';
-import type { ModelsSyncSection, WireReport } from '../types.ts';
+import type { ModelsSyncSection, WireQueryResult, WireReport } from '../types.ts';
 /** modelsSync 命名空间的客户端贡献。 */
 export declare const MODELS_SYNC_REMOTE: TypertRemoteContribution;
 declare module '@deepseek-ai/dsh-typert-protocol' {
@@ -12,11 +12,19 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
         getConfig: () => Promise<RemoteResult<ModelsSyncSection>>;
         updateConfig: (section: ModelsSyncSection) => Promise<RemoteResult<ModelsSyncSection>>;
         run: () => Promise<RemoteResult<WireReport>>;
+        query: (request: {
+            provider: string;
+            model: string;
+        }) => Promise<RemoteResult<WireQueryResult>>;
     }
     interface TypertRemoteMap {
         'modelsSync/getConfig': () => Promise<RemoteResult<ModelsSyncSection>>;
         'modelsSync/updateConfig': (section: ModelsSyncSection) => Promise<RemoteResult<ModelsSyncSection>>;
         'modelsSync/run': () => Promise<RemoteResult<WireReport>>;
+        'modelsSync/query': (request: {
+            provider: string;
+            model: string;
+        }) => Promise<RemoteResult<WireQueryResult>>;
     }
     interface TypertRemoteNamespaceMap {
         modelsSync: TypertRemoteNamespace$6d6f64656c7353796e63;

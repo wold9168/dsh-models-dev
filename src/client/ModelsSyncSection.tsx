@@ -1,14 +1,14 @@
 /**
- * models-sync 设置页：数据源/代理/匹配策略配置、手动同步触发、同步结果、
- * 以及「仅面板内联」的调试日志（含导出为 JSON 文件）。
+ * models-sync 设置页：数据源/代理/匹配策略配置、查询 context 数据、手动同步触发、
+ * 同步结果，以及「仅面板内联」的调试日志（含导出为 JSON 文件）。
  *
  * hooks 组件注入：inject face 的 `hooks.scope` / `hooks.debug` 由 slot 运行
  * 时绑定为 `useScope` / `useDebug` 选择器钩子（见 InjectFace 语义）。
  */
 import { useEffect, useState, type CSSProperties, type ReactElement } from 'react'
 import type { HostObservable, InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { ModelsSyncSection as Section, WireReport } from '../types.ts'
-import type { ModelsDebugBuffer } from './index.ts'
+import type { ModelsSyncSection as Section, WireQueryResult, WireReport } from '../types.ts'
+import type { ModelsDebugBuffer } from './debug-buffer.ts'
 import type { ModelsSyncKey } from './locales.ts'
 
 /** 客户端缺省配置（与宿主 schema 缺省一致，供首帧渲染与导出兜底）。 */
@@ -16,7 +16,6 @@ export function defaultSection(): Section {
   return {
     source: { kind: 'api' },
     matching: { aliases: {}, preferredProviders: [], policy: 'mode' },
-    targets: { llmPiAi: true, llmDeepseek: true },
     debug: false,
     maxLogMb: 2,
   }
@@ -30,6 +29,7 @@ export interface ModelsSyncSectionInjected {
   }
   updateConfig: (section: Section) => Promise<void>
   run: () => Promise<WireReport>
+  query: (provider: string, model: string) => Promise<WireQueryResult>
 }
 
 /** 完整组件 props：运行时份额 + 注入面 + 文案座位。 */
@@ -42,7 +42,7 @@ const input: CSSProperties = {
   padding: '6px 8px', borderRadius: 6, border: '1px solid #8886',
   background: 'transparent', color: 'inherit', fontSize: 13,
 }
-const hint: CSSProperties = { fontSize: 12, opacity: 0.6 }
+const hint: CSSProperties = { fontSize: 12, opacity: 0.62 }
 const button: CSSProperties = {
   padding: '8px 16px', borderRadius: 6, border: '1px solid #8886',
   cursor: 'pointer', background: 'transparent', color: 'inherit', fontSize: 13,
@@ -76,7 +76,7 @@ function redactProxy(proxy: string | undefined): string | undefined {
 }
 
 /** 渲染设置页。 */
-export function ModelsSyncSection({ useScope, useDebug, updateConfig, run, t }: ModelsSyncSectionProps) {
+export function ModelsSyncSection({ useScope, useDebug, updateConfig, run, query, t }: ModelsSyncSectionProps) {
   const config = useScope(snapshot => snapshot.value) ?? defaultSection()
   const debug = useDebug(snapshot => snapshot.value)
   const [draft, setDraft] = useState<Section>(config)
@@ -84,11 +84,31 @@ export function ModelsSyncSection({ useScope, useDebug, updateConfig, run, t }: 
   const [report, setReport] = useState<WireReport | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [exported, setExported] = useState(false)
+  const [qProvider, setQProvider] = useState('')
+  const [qModel, setQModel] = useState('')
+  const [qResult, setQResult] = useState<WireQueryResult | null>(null)
+  const [logLimitText, setLogLimitText] = useState('2')
+  const [logLimitError, setLogLimitError] = useState<string | null>(null)
 
   useEffect(() => { setDraft(config) }, [config])
+  useEffect(() => { setLogLimitText(String(config.maxLogMb ?? 2)) }, [config])
 
   const patch = (partial: Partial<Section>): void => setDraft(current => ({ ...current, ...partial }))
   const patchSource = (source: Section['source']): void => patch({ source })
+
+  const onLogLimitChange = (event: { target: { value: string } }): void => {
+    const text = event.target.value
+    setLogLimitText(text)
+    const trimmed = text.trim()
+    if (trimmed === '') { setLogLimitError(null); return }
+    const value = Number(trimmed)
+    if (!Number.isInteger(value) || (value !== -1 && value <= 0)) {
+      setLogLimitError(t('maxLogMbInvalid'))
+      return
+    }
+    setLogLimitError(null)
+    patch({ maxLogMb: value })
+  }
 
   const onSync = async (): Promise<void> => {
     setBusy(true)
@@ -102,6 +122,13 @@ export function ModelsSyncSection({ useScope, useDebug, updateConfig, run, t }: 
     } finally {
       setBusy(false)
     }
+  }
+
+  const onQuery = (): void => {
+    setQResult(null)
+    void query(qProvider.trim(), qModel.trim())
+      .then(result => setQResult(result))
+      .catch(cause => setQResult({ found: false, reason: cause instanceof Error ? cause.message : String(cause), source: '' }))
   }
 
   const onExport = (): void => {
@@ -126,6 +153,12 @@ export function ModelsSyncSection({ useScope, useDebug, updateConfig, run, t }: 
 
   const debugOn = draft.debug === true
   const maxLogMb = draft.maxLogMb ?? 2
+  const kindName = {
+    exact: t('kindExact'),
+    alias: t('kindAlias'),
+    preferred: t('kindPreferred'),
+    match: t('kindMatch'),
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -235,8 +268,8 @@ export function ModelsSyncSection({ useScope, useDebug, updateConfig, run, t }: 
           <option value="mode">{t('policyMode')}</option>
           <option value="max">{t('policyMax')}</option>
           <option value="min">{t('policyMin')}</option>
-          <option value="first">{t('policyFirst')}</option>
         </select>
+        <span style={hint}>{t('policyHint')}</span>
       </div>
 
       <div style={row}>
@@ -249,6 +282,7 @@ export function ModelsSyncSection({ useScope, useDebug, updateConfig, run, t }: 
             matching: { ...draft.matching, preferredProviders: parseList(event.target.value) },
           })}
         />
+        <span style={hint}>{t('preferredHint')}</span>
       </div>
 
       <div style={row}>
@@ -261,26 +295,7 @@ export function ModelsSyncSection({ useScope, useDebug, updateConfig, run, t }: 
             matching: { ...draft.matching, aliases: parseAliases(event.target.value) },
           })}
         />
-      </div>
-
-      <div style={row}>
-        <span style={label}>{t('targets')}</span>
-        <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13 }}>
-          <input
-            type="checkbox"
-            checked={draft.targets.llmPiAi}
-            onChange={event => patch({ targets: { ...draft.targets, llmPiAi: event.target.checked } })}
-          />
-          {t('targetPiAi')}
-        </label>
-        <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13 }}>
-          <input
-            type="checkbox"
-            checked={draft.targets.llmDeepseek}
-            onChange={event => patch({ targets: { ...draft.targets, llmDeepseek: event.target.checked } })}
-          />
-          {t('targetDeepseek')}
-        </label>
+        <span style={hint}>{t('aliasesHint')}</span>
       </div>
 
       <div style={row}>
@@ -299,16 +314,54 @@ export function ModelsSyncSection({ useScope, useDebug, updateConfig, run, t }: 
         <label style={label} htmlFor="ms-maxlog">{t('maxLogMb')}</label>
         <input
           id="ms-maxlog"
-          type="number"
+          type="text"
+          inputMode="numeric"
           style={input}
-          value={maxLogMb}
-          onChange={event => {
-            const value = Number(event.target.value)
-            if (Number.isFinite(value)) patch({ maxLogMb: value })
-          }}
+          value={logLimitText}
+          onChange={onLogLimitChange}
         />
-        <span style={hint}>{t('maxLogMbHint')}</span>
+        <span style={hint}>{logLimitError !== null ? logLimitError : t('maxLogMbHint')}</span>
       </div>
+
+      <div style={row}>
+        <span style={label}>{t('queryLabel')}</span>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <input
+            style={input}
+            placeholder={t('queryProviderPlaceholder')}
+            value={qProvider}
+            onChange={event => setQProvider(event.target.value)}
+          />
+          <input
+            style={input}
+            placeholder={t('queryModelPlaceholder')}
+            value={qModel}
+            onChange={event => setQModel(event.target.value)}
+          />
+          <button style={button} onClick={onQuery}>{t('queryButton')}</button>
+        </div>
+        <span style={hint}>{t('queryHint')}</span>
+      </div>
+
+      {qResult !== null && (
+        <div style={row}>
+          <span style={label}>{t('queryResultLabel')}</span>
+          {qResult.found ? (
+            <div style={{ fontSize: 13 }}>
+              {t('queryContextWindow')}: {qResult.contextWindow}
+              <br />
+              {t('queryMaxTokens')}: {qResult.maxTokens !== undefined ? qResult.maxTokens : t('queryNotDisclosed')}
+              <br />
+              {t('queryWay')}: {kindName[qResult.kind ?? 'match']}
+              {qResult.matchedProvider !== undefined ? `（${qResult.matchedProvider}）` : ''}
+            </div>
+          ) : (
+            <div style={{ fontSize: 13, ...(qResult.reason?.includes('未找到') === true ? {} : { color: 'var(--danger, #d22)' }) }}>
+              {qResult.reason ?? t('queryNotFound')}
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <button style={{ ...button, opacity: busy ? 0.6 : 1 }} onClick={() => { void onSync() }} disabled={busy}>
@@ -337,7 +390,7 @@ export function ModelsSyncSection({ useScope, useDebug, updateConfig, run, t }: 
       )}
 
       <div style={row}>
-        <span style={label}>{t('debugLog')}（{t('maxLogMb')}: {maxLogMb === -1 ? t('unlimited') : `${String(maxLogMb)} MB`}）</span>
+        <span style={label}>{t('debugLog')}（{t('debugLogCap')} {maxLogMb === -1 ? t('unlimited') : `${String(maxLogMb)} MB`}）</span>
         {!debugOn && <span style={hint}>{t('debugOff')}</span>}
         {debugOn && (debug?.records.length === 0 ? (
           <span style={hint}>{t('debugEmpty')}</span>

@@ -30,23 +30,22 @@ export interface SyncSourceConfig {
   github?: { repo: string; ref: string; file: string }
 }
 
-/** model-id 回退匹配的聚合策略。 */
-export type MatchPolicy = 'mode' | 'max' | 'min' | 'first'
+/**
+ * 聚合策略：仅当「精确匹配」与「取值优先的 provider」都未命中时才启用。
+ * - mode：多数 provider 给出的值（众数）
+ * - max：按模型自身能力的最乐观值
+ * - min：按各 provider 上报的最小值，最保守
+ */
+export type MatchPolicy = 'mode' | 'max' | 'min'
 
 /** 匹配配置。 */
 export interface MatchingConfig {
-  /** settings 供应方名 -> models.dev provider id，在 model-id 回退之前尝试。 */
+  /** settings 里的 provider 名 -> models.dev 的 provider id（A=B 表示名为 B 的按 A 探查）。 */
   aliases?: Record<string, string>
-  /** 'first' 策略与 'mode' 平局时偏好的 provider 顺序。 */
+  /** 取值优先的 provider：按列表顺序取第一个持有该模型的 provider 数据。 */
   preferredProviders?: string[]
-  /** model-id 回退聚合策略，默认 'mode'。 */
+  /** 聚合策略，默认 'mode'。 */
   policy?: MatchPolicy
-}
-
-/** 同步要补全的 settings 命名空间；两者都默认开启。 */
-export interface SyncTargets {
-  llmPiAi?: boolean
-  llmDeepseek?: boolean
 }
 
 export interface SyncConfig {
@@ -54,24 +53,25 @@ export interface SyncConfig {
   /** HTTP(S) 代理 URL；空/缺省走直连。 */
   proxy?: string
   matching?: MatchingConfig
-  targets?: SyncTargets
 }
 
 /** 一条 settings 条目如何拿到上下文窗口。 */
-export type ResolveKind = 'exact' | 'alias' | 'match'
+export type ResolveKind = 'exact' | 'alias' | 'preferred' | 'match'
 
 /** 一条 settings (provider, model) 条目的解析结果。 */
 export interface ResolvedContext {
   contextWindow: number
+  /** 该 provider 披露的最大输出 token（查询展示用）。 */
+  maxTokens?: number
   kind: ResolveKind
-  /** 提供该值的 models.dev provider（'match' 时给出）。 */
+  /** 提供该值的 models.dev provider（'alias'/'preferred'/'match' 时给出）。 */
   matchedProvider?: string
 }
 
-/** 计划写入 settings 文档的一条记录。 */
+/** 计划写入 settings 文档的一条记录（仅 llm-pi-ai）。 */
 export interface PlannedWrite {
-  ns: 'llm-pi-ai' | 'llm-deepseek'
-  /** llm-pi-ai 的 provider 路由名；llm-deepseek 恒为 'deepseek-official'。 */
+  ns: 'llm-pi-ai'
+  /** llm-pi-ai 的 provider 路由名。 */
   provider: string
   model: string
   /** 该条目在其 models 数组中的位置，供 CLI 叶子级写回定位。 */
@@ -81,17 +81,17 @@ export interface PlannedWrite {
   matchedProvider?: string
 }
 
-/** 同步放过的条目。 */
+/** 同步放过的条目（仅 llm-pi-ai）。 */
 export interface SkippedEntry {
-  ns: 'llm-pi-ai' | 'llm-deepseek'
+  ns: 'llm-pi-ai'
   provider: string
   model: string
   reason: string
 }
 
-/** 任何来源都未能解析的条目。 */
+/** 任何来源都未能解析的条目（仅 llm-pi-ai）。 */
 export interface UnresolvedEntry {
-  ns: 'llm-pi-ai' | 'llm-deepseek'
+  ns: 'llm-pi-ai'
   provider: string
   model: string
   candidates: number

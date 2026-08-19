@@ -19,7 +19,7 @@ import {
 import { appendDebugRecords, EMPTY_DEBUG_BUFFER } from './debug-buffer.ts'
 import type { ModelsDebugBuffer } from './debug-buffer.ts'
 import { NS, en, zh, type ModelsSyncKey } from './locales.ts'
-import type { ModelsSyncSection as Section, WireReport } from '../types.ts'
+import type { ModelsSyncSection as Section, WireQueryResult, WireReport } from '../types.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -39,6 +39,7 @@ interface ModelsSyncNamespaceFace {
   getConfig(): Promise<{ ok: true; value: Section } | { ok: false; error: { code: string; message: string } }>
   updateConfig(section: Section): Promise<{ ok: true; value: Section } | { ok: false; error: { code: string; message: string } }>
   run(): Promise<{ ok: true; value: WireReport } | { ok: false; error: { code: string; message: string } }>
+  query(request: { provider: string; model: string }): Promise<{ ok: true; value: WireQueryResult } | { ok: false; error: { code: string; message: string } }>
 }
 
 /**
@@ -87,6 +88,14 @@ export function apply(ctx: ClientContext): void {
     return report
   }
 
+  const query = async (provider: string, model: string): Promise<WireQueryResult> => {
+    const remote = modelsSync
+    if (remote === undefined) throw new Error('modelsSync Remote 未挂载')
+    const result = await remote.query({ provider, model })
+    if (!result.ok) throw new Error(`查询失败: ${result.error.code}: ${result.error.message}`)
+    return result.value
+  }
+
   ctx.effect(async () => {
     const dispose = await ctx.remote.$mount(MODELS_SYNC_REMOTE)
     modelsSync = (ctx.reflect as unknown as { get(name: string): unknown })
@@ -112,6 +121,7 @@ export function apply(ctx: ClientContext): void {
       hooks: { scope: configStore, debug: debugStore },
       updateConfig,
       run,
+      query,
     }),
   }, ModelsSyncSection))
 }

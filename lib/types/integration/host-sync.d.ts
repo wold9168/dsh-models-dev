@@ -1,8 +1,8 @@
 /**
- * Host 侧同步编排：取数 -> 归一化 -> 计划 -> 写回 settings。
+ * Host 侧同步编排：取数 -> 归一化 -> 计划 -> 写回 settings（仅 llm-pi-ai）。
  *
  * 通过依赖注入的 SettingsAccess 使用 settings 服务，因此本模块不依赖 DSH
- * 包即可独立单测；真正的 `ctx.settings` 适配见 integration/dsh/host-plugin.ts。
+ * 包即可独立单测；真正的 `ctx.settings` 适配在运行时接线。
  * 传 options.onDebug 时在关键步骤发出调试记录（仅开关打开时收集）。
  */
 import type { DebugRecord, SyncConfig, SyncReport } from '../core/types.ts';
@@ -21,7 +21,7 @@ export interface SyncRunOptions {
     onDebug?: (record: DebugRecord) => void;
 }
 /**
- * 执行一次完整同步：拉取 -> 归一化 -> 计划 -> 对每个有变化的命名空间合并写回。
+ * 执行一次完整同步：拉取 -> 归一化 -> 计划 -> 合并写回 llm-pi-ai。
  * 网络或数据源错误记入报告 errors，不中断已解析的部分。
  */
 export declare function syncViaSettings(settings: SettingsAccess, config: SyncConfig, options?: SyncRunOptions): Promise<SyncReport>;

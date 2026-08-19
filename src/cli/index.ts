@@ -27,7 +27,6 @@ interface Args {
   policy?: string
   alias?: string[]
   preferred?: string
-  targets?: string
   apply: boolean
   'dry-run': boolean
   json: boolean
@@ -39,17 +38,16 @@ function usage(): string {
   return `用法: dsh-models-sync [选项]
 
 从 models.dev（或镜像/GitHub 仓库）拉取模型数据，按 (provider, modelId) 键
-为 settings.yaml 中缺失 contextWindow 的模型条目补全上下文窗口。
+为 settings.yaml 的 llm-pi-ai 分区中缺失 contextWindow 的模型条目补全上下文窗口。
 
 选项:
   --settings <path>      settings 文件路径（默认 $DSH_HOME 或 ~/.dsh/settings.yaml）
   --source <url>         数据源 URL（任意镜像）
   --github <repo[@ref[#file]]>  从 GitHub 仓库 raw 取数（默认 anomalyco/models.dev@dev#models.json）
   --proxy <url>          HTTP(S) 代理
-  --policy <mode|max|min|first>  模型 id 回退聚合策略（默认 mode）
+  --policy <mode|max|min>  聚合策略（默认 mode）
   --alias <settings=md>  供应方别名映射，可多次（如 --alias scnet=openrouter）
-  --preferred <a,b,c>    'first' 策略与平局偏好的 provider 顺序
-  --targets <pi-ai,deepseek>  要补全的命名空间（默认两者）
+  --preferred <a,b,c>    取值优先的 provider 顺序（逗号分隔）
   --apply                写回 settings 文件（默认 dry-run）
   --dry-run              显式声明只预览不落盘（默认即如此）
   --json                 输出 JSON 报告
@@ -73,20 +71,6 @@ function defaultSettingsPath(): string {
   return join(home, 'settings.yaml')
 }
 
-/** 解析 --targets 参数。 */
-function parseTargets(spec: string | undefined): { llmPiAi: boolean; llmDeepseek: boolean } {
-  const targets = { llmPiAi: true, llmDeepseek: true }
-  if (spec === undefined) return targets
-  for (const part of spec.split(',')) {
-    if (part === 'pi-ai') targets.llmPiAi = true
-    else if (part === 'deepseek') targets.llmDeepseek = true
-    else if (part === '-pi-ai') targets.llmPiAi = false
-    else if (part === '-deepseek') targets.llmDeepseek = false
-    else throw new Error(`未知 target: ${part}`)
-  }
-  return targets
-}
-
 async function main(): Promise<void> {
   let parsed: { values: Args }
   try {
@@ -99,7 +83,6 @@ async function main(): Promise<void> {
         policy: { type: 'string' },
         alias: { type: 'string', multiple: true },
         preferred: { type: 'string' },
-        targets: { type: 'string' },
         apply: { type: 'boolean', default: false },
         'dry-run': { type: 'boolean', default: false },
         json: { type: 'boolean', default: false },
@@ -121,7 +104,7 @@ async function main(): Promise<void> {
   }
 
   const policy = (args.policy ?? 'mode') as MatchPolicy
-  if (!['mode', 'max', 'min', 'first'].includes(policy)) {
+  if (!['mode', 'max', 'min'].includes(policy)) {
     process.stderr.write(`未知策略: ${policy}\n`)
     process.exit(2)
   }
@@ -148,7 +131,6 @@ async function main(): Promise<void> {
       ...args.preferred === undefined ? {} : { preferredProviders: args.preferred.split(',').map(s => s.trim()).filter(s => s.length > 0) },
       policy,
     },
-    targets: parseTargets(args.targets),
   }
 
   // 拉取 + 归一化
@@ -181,14 +163,9 @@ async function main(): Promise<void> {
 
   const input: PlanInput = {
     llmPiAi: isObject(root['llm-pi-ai']) ? root['llm-pi-ai'] : undefined,
-    llmDeepseek: isObject(root['llm-deepseek']) ? root['llm-deepseek'] : undefined,
   }
 
-  const targets = {
-    llmPiAi: config.targets?.llmPiAi ?? true,
-    llmDeepseek: config.targets?.llmDeepseek ?? true,
-  }
-  const planned = planSync(input, index, config.matching ?? {}, targets)
+  const planned = planSync(input, index, config.matching ?? {})
 
   const report: SyncReport = {
     written: planned.writes,

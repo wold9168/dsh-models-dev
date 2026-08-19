@@ -50,58 +50,47 @@ const INPUT: PlanInput = {
       nvidia: {},
     },
   },
-  llmDeepseek: {
-    models: [
-      { id: 'deepseek-v4-pro' },
-    ],
-  },
 }
 
-const TARGETS = { llmPiAi: true, llmDeepseek: true }
-
 describe('planSync', () => {
-  it('只补缺失 contextWindow 的条目', () => {
-    const { writes, skipped, unresolved } = planSync(INPUT, index, {}, TARGETS)
+  it('只补缺失 contextWindow 的条目（仅 llm-pi-ai）', () => {
+    const { writes, skipped, unresolved } = planSync(INPUT, index, {})
     const ids = writes.map(w => `${w.ns}:${w.provider}:${w.model}`)
     expect(ids).toContain('llm-pi-ai:scnet:DeepSeek-V4-Flash-0731')
     expect(ids).toContain('llm-pi-ai:scnet:DeepSeek-V4-Pro')
     expect(ids).toContain('llm-pi-ai:scnet:GLM-5')
     expect(ids).toContain('llm-pi-ai:opencode:big-pickle')
-    expect(ids).toContain('llm-deepseek:deepseek-official:deepseek-v4-pro')
-    expect(writes).toHaveLength(5)
+    expect(writes).toHaveLength(4)
+    expect(writes.every(w => w.ns === 'llm-pi-ai')).toBe(true)
     expect(skipped).toHaveLength(2)
     expect(unresolved).toHaveLength(1)
   })
   it('已设置 contextWindow 的条目跳过，不覆盖', () => {
-    const { skipped } = planSync(INPUT, index, {}, TARGETS)
+    const { skipped } = planSync(INPUT, index, {})
     const kimi = skipped.find(s => s.model === 'Kimi-K3')
     expect(kimi?.reason).toBe('已设置 contextWindow')
     const flash = skipped.find(s => s.model === 'deepseek-v4-flash-free')
     expect(flash?.reason).toBe('已设置 contextWindow')
   })
   it('保留模型条目的其他字段（name/maxTokens）', () => {
-    const { writes } = planSync(INPUT, index, {}, TARGETS)
+    const { writes } = planSync(INPUT, index, {})
     const glm = writes.find(w => w.model === 'GLM-5')!
     expect(glm.entryIndex).toBe(2)
-    const patch = buildUpdatePatch('llm-pi-ai', INPUT, [glm])!
+    const patch = buildUpdatePatch(INPUT, [glm])!
     const scnet = (patch['providers'] as Record<string, { models: Record<string, unknown>[] }>)['scnet']!
     const entry = scnet.models[2]!
     expect(entry).toMatchObject({ id: 'GLM-5', name: 'GLM-5', maxTokens: 64000, contextWindow: 200000 })
   })
   it('未命中条目进入 unresolved', () => {
-    const { unresolved } = planSync(INPUT, index, {}, TARGETS)
+    const { unresolved } = planSync(INPUT, index, {})
     expect(unresolved[0]?.model).toBe('no-such-model')
-  })
-  it('目标命名空间可单独关闭', () => {
-    const { writes } = planSync(INPUT, index, {}, { llmPiAi: true, llmDeepseek: false })
-    expect(writes.every(w => w.ns === 'llm-pi-ai')).toBe(true)
   })
 })
 
 describe('buildUpdatePatch', () => {
   it('llm-pi-ai 补丁按 provider 组，只替换被触碰 provider 的 models', () => {
-    const { writes } = planSync(INPUT, index, {}, TARGETS)
-    const patch = buildUpdatePatch('llm-pi-ai', INPUT, writes)!
+    const { writes } = planSync(INPUT, index, {})
+    const patch = buildUpdatePatch(INPUT, writes)!
     const providers = patch['providers'] as Record<string, unknown>
     expect(Object.keys(providers).sort()).toEqual(['opencode', 'scnet'])
     const scnetModels = (providers['scnet'] as { models: Record<string, unknown>[] }).models
@@ -109,12 +98,7 @@ describe('buildUpdatePatch', () => {
     expect(scnetModels[1]!).toEqual({ id: 'DeepSeek-V4-Pro', contextWindow: 1048576 })
     expect(scnetModels[3]!).toEqual({ id: 'Kimi-K3', contextWindow: 1048576 }) // 已有值原样保留
   })
-  it('llm-deepseek 补丁替换 models 数组', () => {
-    const { writes } = planSync(INPUT, index, {}, TARGETS)
-    const patch = buildUpdatePatch('llm-deepseek', INPUT, writes)!
-    expect(patch['models']).toEqual([{ id: 'deepseek-v4-pro', contextWindow: 1048576 }])
-  })
   it('无写入时返回 undefined', () => {
-    expect(buildUpdatePatch('llm-pi-ai', INPUT, [])).toBeUndefined()
+    expect(buildUpdatePatch(INPUT, [])).toBeUndefined()
   })
 })

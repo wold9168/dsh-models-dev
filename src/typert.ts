@@ -21,6 +21,7 @@ export const TYPERT_MANIFEST: TypertContribution = {
           { kind: 'method', name: 'getConfig', signature: 'getConfig(): ModelsSyncSection' },
           { kind: 'method', name: 'updateConfig', signature: 'updateConfig(section: ModelsSyncSection): Promise<ModelsSyncSection>' },
           { kind: 'method', name: 'run', signature: 'run(): Promise<WireReport>' },
+          { kind: 'method', name: 'query', signature: 'query(request: QueryRequest): Promise<WireQueryResult>' },
         ],
         types: [],
       },

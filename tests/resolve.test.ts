@@ -12,7 +12,7 @@ const API_FIXTURE = {
   },
   'openrouter': {
     models: {
-      'deepseek/deepseek-v4-flash-0731': { limit: { context: 1310720 } },
+      'deepseek/deepseek-v4-flash-0731': { limit: { context: 1310720, output: 393216 } },
       'deepseek/deepseek-v4-pro': { limit: { context: 1048576 } },
       'z-ai/glm-5': { limit: { context: 200000 } },
       'kimi/kimi-k3': { limit: { context: 1048576 } },
@@ -80,20 +80,26 @@ describe('resolveContext 模型 id 跨 provider 回退', () => {
     const r = resolveContext(index, 'scnet', 'DeepSeek-V4-Flash-0731', { policy: 'min' })
     expect(r?.contextWindow).toBe(1000000)
   })
-  it('policy first 按 preferredProviders 排序', () => {
+  it('取值优先的 provider 独立优先级：按列表顺序取第一个持有者', () => {
     const r = resolveContext(index, 'scnet', 'DeepSeek-V4-Flash-0731', {
-      policy: 'first',
       preferredProviders: ['nvidia', 'openrouter'],
     })
+    expect(r?.kind).toBe('preferred')
     expect(r?.matchedProvider).toBe('nvidia')
     expect(r?.contextWindow).toBe(1000000)
   })
-  it('policy mode 以 preferredProviders 打破平局', () => {
+  it('取值优先的 provider 未持有该模型时回落到聚合', () => {
     const r = resolveContext(index, 'scnet', 'DeepSeek-V4-Flash-0731', {
-      policy: 'mode',
-      preferredProviders: ['nvidia'],
+      preferredProviders: ['ghost'],
     })
-    expect(r?.contextWindow).toBe(1000000)
+    expect(r?.kind).toBe('match')
+    expect(r?.matchedProvider).toBe('openrouter')
+  })
+  it('查询结果携带 maxTokens', () => {
+    const r = resolveContext(index, 'openrouter', 'deepseek-v4-flash-0731', {})
+    expect(r?.kind).toBe('exact')
+    expect(r?.contextWindow).toBe(1310720)
+    expect(r?.maxTokens).toBe(393216)
   })
 })
 

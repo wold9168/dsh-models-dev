@@ -4,7 +4,7 @@
  */
 import type { RemoteResult, TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol'
 import { MODELS_SYNC_INVOCATIONS } from '../contract.ts'
-import type { ModelsSyncSection, WireReport } from '../types.ts'
+import type { ModelsSyncSection, WireQueryResult, WireReport } from '../types.ts'
 
 /** modelsSync 命名空间的客户端贡献。 */
 export const MODELS_SYNC_REMOTE: TypertRemoteContribution = {
@@ -20,11 +20,13 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     getConfig: () => Promise<RemoteResult<ModelsSyncSection>>
     updateConfig: (section: ModelsSyncSection) => Promise<RemoteResult<ModelsSyncSection>>
     run: () => Promise<RemoteResult<WireReport>>
+    query: (request: { provider: string; model: string }) => Promise<RemoteResult<WireQueryResult>>
   }
   interface TypertRemoteMap {
     'modelsSync/getConfig': () => Promise<RemoteResult<ModelsSyncSection>>
     'modelsSync/updateConfig': (section: ModelsSyncSection) => Promise<RemoteResult<ModelsSyncSection>>
     'modelsSync/run': () => Promise<RemoteResult<WireReport>>
+    'modelsSync/query': (request: { provider: string; model: string }) => Promise<RemoteResult<WireQueryResult>>
   }
   interface TypertRemoteNamespaceMap {
     modelsSync: TypertRemoteNamespace$6d6f64656c7353796e63

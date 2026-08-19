@@ -117,10 +117,12 @@ llm-pi-ai:
 
 对 settings 条目 (P, M) 缺 `contextWindow`：
 
-1. `index[P][M]` 精确命中；
-2. 配置的 alias 映射（`aliases: { scnet: openrouter }`）→ `index[alias(P)][M]`；
-3. model-id 归一化匹配 + 聚合策略（mode / max / min / first，`preferredProviders` 优先）；
+1. **精确匹配**：provider 与 model 精确命中（先试别名解析后的 provider，再试自身）；
+2. **取值优先的 provider**：`preferredProviders` 按列表顺序取第一个持有该 model 的；
+3. **聚合策略**：model-id 归一化匹配 + mode / max / min 聚合；
 4. 仍未命中 → 跳过，计入报告 `unresolved`。
+
+（已移除 `first` 策略与「补全目标」：只处理 `llm-pi-ai`，`llm-deepseek` 有官方硬编码兜底。）
 
 ## 插件架构
 
@@ -132,8 +134,8 @@ DSH 静态包（TypeScript ESM，遵循 DSH 包风格；未来挂进 host compos
 - **normalizer**：按结构识别 `limit.context` / `context_length`，产出统一索引
   `{ provider: { modelId: { contextWindow } } }` + 模型 id 二级索引。
 - **resolver**：实现上面的匹配顺序。
-- **writer**：`ctx.settings.get('llm-pi-ai' | 'llm-deepseek')` → 找缺 `contextWindow` 的条目 → 解析 → `ctx.settings.update(...)` 合并写回（只在有实际变化时写）。
-- **RPC**：暴露给 Client 的触发入口（`run`），返回报告 `{ written: [{provider, model, contextWindow}], skipped, unresolved, errors }`。
+- **writer**：`ctx.settings.get('llm-pi-ai')` → 找缺 `contextWindow` 的条目 → 解析 → `ctx.settings.update(...)` 合并写回（只在有实际变化时写）。
+- **RPC**：暴露给 Client 的触发入口（`run`）与查询入口（`query(provider, model)`），`run` 返回报告 `{ written, skipped, unresolved, errors, source, sourceModels, debug? }`，`query` 返回该 provider+model 在 models.dev 数据中的 `contextWindow`/`maxTokens` 与命中方式。
 - 插件自身的配置命名空间 `models-sync`（`installSettingsSection` 注册），含：
   ```yaml
   models-sync:
@@ -145,10 +147,9 @@ DSH 静态包（TypeScript ESM，遵循 DSH 包风格；未来挂进 host compos
     matching:
       aliases: { scnet: openrouter }
       preferredProviders: [ openrouter, nvidia ]
-      policy: mode          # mode | max | min | first
-    targets: { llmPiAi: true, llmDeepseek: true }
+      policy: mode          # mode | max | min
     debug: false            # 调试开关：打开才记录同步调试日志（仅面板内联 + 导出）
-    maxLogMb: 2             # 日志大小限制（MB）：-1 无限制；正数=上限
+    maxLogMb: 2             # 日志大小限制（MB）：-1 无限制；正数=上限（仅 -1 或正整数）
   ```
 
 ### 调试日志（M3）
@@ -164,9 +165,11 @@ DSH 静态包（TypeScript ESM，遵循 DSH 包风格；未来挂进 host compos
 - 页面内容：
   - 「立即同步」按钮（手动触发开关）；
   - 数据源配置：CDN / 自定义镜像 URL / GitHub 仓库（repo + ref）；
-  - 代理配置；
-  - 匹配策略（alias、首选 provider、聚合策略）；
-  - 同步结果报告（成功/跳过/未命中）。
+  - 代理地址（控制连接 models.dev 的代理）；
+  - 匹配配置：聚合策略（mode/max/min，带说明）、取值优先的 provider（独立优先级）、供应方别名；
+  - 查询 context 数据（provider + model id → contextWindow / maxTokens，按当前匹配配置解析）；
+  - 同步结果报告（写入/跳过/未命中/错误）；
+  - 调试开关（仅面板内联）+ 日志大小限制（-1 或正整数校验）+ 导出 JSON。
 - 自身配置经 `ctx.settingsScope` 绑定 `models-sync` 命名空间读写；同步动作经 Host RPC 触发；结果回传展示。
 - 同步完成后 `settings/updated` 事件会自动刷新官方 Models 页，无需额外联动。
 

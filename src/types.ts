@@ -1,5 +1,5 @@
 /**
- * 插件共享类型：宿主配置分区（models-sync 命名空间）与跨线报告形状。
+ * 插件共享类型：宿主配置分区（models-sync 命名空间）与跨线形状。
  * 这里只放 JSON 兼容的普通数据；核心逻辑见 src/core。
  */
 import type { ResolveKind } from './core/types.ts'
@@ -17,13 +17,7 @@ export interface WireSource {
 export interface WireMatching {
   aliases: Record<string, string>
   preferredProviders: string[]
-  policy: 'mode' | 'max' | 'min' | 'first'
-}
-
-/** 要补全的命名空间开关（默认都开）。 */
-export interface WireTargets {
-  llmPiAi: boolean
-  llmDeepseek: boolean
+  policy: 'mode' | 'max' | 'min'
 }
 
 /** models-sync 命名空间分区形状 = 客户端看到的完整配置（默认已填）。 */
@@ -31,10 +25,9 @@ export interface ModelsSyncSection {
   source: WireSource
   proxy?: string
   matching: WireMatching
-  targets: WireTargets
   /** 调试开关：打开后记录同步调试日志（仅面板内联显示与导出）。 */
   debug?: boolean
-  /** 日志大小限制（MB）：-1 不限，正数=上限。 */
+  /** 日志大小限制（MB）：-1 无限制，正数=上限。 */
   maxLogMb?: number
 }
 
@@ -48,7 +41,7 @@ export interface WireDebugRecord {
 
 /** 一条已写入记录（wire 版，去掉内部 entryIndex）。 */
 export interface WireWrite {
-  ns: 'llm-pi-ai' | 'llm-deepseek'
+  ns: 'llm-pi-ai'
   provider: string
   model: string
   contextWindow: number
@@ -58,7 +51,7 @@ export interface WireWrite {
 
 /** 跳过条目。 */
 export interface WireSkip {
-  ns: 'llm-pi-ai' | 'llm-deepseek'
+  ns: 'llm-pi-ai'
   provider: string
   model: string
   reason: string
@@ -66,7 +59,7 @@ export interface WireSkip {
 
 /** 未命中条目。 */
 export interface WireUnresolved {
-  ns: 'llm-pi-ai' | 'llm-deepseek'
+  ns: 'llm-pi-ai'
   provider: string
   model: string
   candidates: number
@@ -83,4 +76,17 @@ export interface WireReport {
   sourceModels: number
   /** 调试记录（仅开关打开时携带）。 */
   debug?: WireDebugRecord[]
+}
+
+/** 查询结果（wire 版）：按当前匹配配置解析指定 provider + 模型的 context 与 maxTokens。 */
+export interface WireQueryResult {
+  found: boolean
+  /** 未命中时的原因。 */
+  reason?: string
+  contextWindow?: number
+  maxTokens?: number
+  kind?: ResolveKind
+  matchedProvider?: string
+  source: string
+  fetchedAt?: string
 }
