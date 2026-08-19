@@ -1,0 +1,4 @@
+# dsh-models-sync 插件包补丁：插入宿主行。挂进 profile 的 dsh.profile.bundles 后自动应用。
+- insert:
+    - id: models-sync
+      name: '@deepseek-ai/dsh-models-sync'

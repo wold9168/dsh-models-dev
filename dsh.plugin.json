@@ -1,0 +1,12 @@
+{
+  "name": "@deepseek-ai/dsh-models-sync",
+  "description": "从 models.dev 拉取模型数据，按 (provider, modelId) 键补全缺失的 contextWindow",
+  "version": "0.1.0",
+  "entry": {
+    "name": "models-sync",
+    "inject": ["settings", "typert"]
+  },
+  "client": {
+    "platform": "web"
+  }
+}
